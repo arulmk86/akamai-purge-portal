@@ -1,0 +1,31 @@
+
+name: Akamai Purge via Repository Dispatch
+
+on:
+  repository_dispatch:
+    types: [akamai_purge]
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show user input
+        run: |
+          echo "URL to purge:"
+          echo "${{ github.event.client_payload.url }}"
+
+      - name: Purge Akamai Cache
+        env:
+          AKAMAI_CLIENT_TOKEN: ${{ secrets.AKAMAI_CLIENT_TOKEN }}
+          AKAMAI_CLIENT_SECRET: ${{ secrets.AKAMAI_CLIENT_SECRET }}
+          AKAMAI_ACCESS_TOKEN: ${{ secrets.AKAMAI_ACCESS_TOKEN }}
+          AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
+        run: |
+          curl -X POST "https://${AKAMAI_HOST}/ccu/v3/invalidate/url" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer ${AKAMAI_ACCESS_TOKEN}" \
+          -d '{
+            "objects": [
+              "${{ github.event.client_payload.url }}"
+            ]
+          }'
