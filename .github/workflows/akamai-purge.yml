@@ -7,13 +7,9 @@ on:
         description: "URL to purge"
         required: true
       network:
-        description: "Akamai network"
+        description: "staging or production"
         required: true
         default: "staging"
-        type: choice
-        options:
-          - staging
-          - production
 
 jobs:
   purge:
@@ -23,26 +19,15 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 🔑 THIS IS THE MOST IMPORTANT STEP
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Verify Python
-        run: |
-          python --version
-          pip --version
-
-      - name: Install Akamai EdgeGrid SDK
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests akamai-edgegrid-python
-
-      - name: Show user input
-        run: |
-          echo "URL=${{ github.event.inputs.url }}"
-          echo "NETWORK=${{ github.event.inputs.network }}"
+          pip install requests edgegrid-python
 
       - name: Purge Akamai Cache
         env:
@@ -52,34 +37,31 @@ jobs:
           AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
         run: |
           python << 'EOF'
-          import requests
-          from akamai.edgegrid import EdgeGridAuth
           import os
+          import requests
+          from edgegrid import EdgeGridAuth
 
-          url_to_purge = "${{ github.event.inputs.url }}"
+          url = "${{ github.event.inputs.url }}"
           network = "${{ github.event.inputs.network }}"
-
-          base_url = f"https://{os.environ['AKAMAI_HOST']}"
-          endpoint = "/ccu/v3/invalidate/url"
 
           session = requests.Session()
           session.auth = EdgeGridAuth(
               client_token=os.environ["AKAMAI_CLIENT_TOKEN"],
               client_secret=os.environ["AKAMAI_CLIENT_SECRET"],
-              access_token=os.environ["AKAMAI_ACCESS_TOKEN"],
+              access_token=os.environ["AKAMAI_ACCESS_TOKEN"]
           )
 
+          endpoint = f"https://{os.environ['AKAMAI_HOST']}/ccu/v3/invalidate/url"
           payload = {
-              "objects": [url_to_purge],
+              "objects": [url],
               "network": network
           }
 
-          resp = session.post(base_url + endpoint, json=payload)
+          r = session.post(endpoint, json=payload)
+          print("Status:", r.status_code)
+          print(r.text)
 
-          print("Status:", resp.status_code)
-          print(resp.text)
-
-          if resp.status_code not in (201, 202):
+          if r.status_code not in (201, 202):
               raise SystemExit("❌ Purge failed")
 
           print("✅ Purge request accepted")
