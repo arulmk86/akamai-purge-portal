@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Akamai Purge Portal</title>
+  <style>
+    body { font-family: Arial; padding: 40px }
+    input { width: 500px; padding: 8px }
+    button { padding: 10px 20px }
+  </style>
+</head>
+<body>
+
+<h2>Akamai Cache Purge Portal</h2>
+
+<input id="url" placeholder="https://example.com/file.jpg" />
+<br><br>
+<button onclick="purge()">Purge Cache</button>
+
+<p id="status"></p>
+
+<script>
+async function purge() {
+  const url = document.getElementById("url").value;
+  document.getElementById("status").innerText = "Triggering purge...";
+
+  const res = await fetch(
+    "https://api.github.com/repos/arulmk86/akamai-purge-portal/dispatches",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": "token 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",
+        "Accept": "application/vnd.github+json"
+      },
+      body: JSON.stringify({
+        event_type: "akamai_purge",
+        client_payload: { url }
+      })
+    }
+  );
+
+  document.getElementById("status").innerText =
+    res.status === 204
+      ? "✅ Purge triggered"
+      : "❌ Failed to trigger purge";
+}
+</script>
+
+</body>
+</html>
