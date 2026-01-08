@@ -30,7 +30,8 @@ jobs:
       - name: Install Akamai EdgeGrid library
         run: |
           python3 -m pip install --upgrade pip
-          pip install requests akamai-edgegrid==1.3.1
+          pip install requests akamai-edgegrid-python
+  
 
       - name: Purge Akamai Cache
         env:
