@@ -3,8 +3,11 @@ name: Akamai Cache Purge
 on:
   workflow_dispatch:
     inputs:
+      url:
+        description: "URL to purge"
+        required: true
       network:
-        description: "Select Akamai network"
+        description: "Akamai network"
         required: true
         default: "staging"
         type: choice
@@ -12,26 +15,34 @@ on:
           - staging
           - production
 
-      urls:
-        description: "URLs to purge (comma separated)"
-        required: true
-        default: "https://www.example.com/test.txt"
-
 jobs:
   purge:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 🔑 THIS IS THE MOST IMPORTANT STEP
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify Python
+        run: |
+          python --version
+          pip --version
+
+      - name: Install Akamai EdgeGrid SDK
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests akamai-edgegrid-python
+
       - name: Show user input
         run: |
-          echo "Network : ${{ github.event.inputs.network }}"
-          echo "URLs    : ${{ github.event.inputs.urls }}"
-
-      - name: Install Akamai EdgeGrid library
-        run: |
-          python3 -m pip install --upgrade pip
-          pip install requests akamai-edgegrid-python
-  
+          echo "URL=${{ github.event.inputs.url }}"
+          echo "NETWORK=${{ github.event.inputs.network }}"
 
       - name: Purge Akamai Cache
         env:
@@ -39,43 +50,37 @@ jobs:
           AKAMAI_CLIENT_SECRET: ${{ secrets.AKAMAI_CLIENT_SECRET }}
           AKAMAI_ACCESS_TOKEN: ${{ secrets.AKAMAI_ACCESS_TOKEN }}
           AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
-          NETWORK: ${{ github.event.inputs.network }}
-          URLS: ${{ github.event.inputs.urls }}
         run: |
-          python3 << 'EOF'
-          import os
-          import json
+          python << 'EOF'
           import requests
           from akamai.edgegrid import EdgeGridAuth
+          import os
 
-          client_token = os.environ["AKAMAI_CLIENT_TOKEN"]
-          client_secret = os.environ["AKAMAI_CLIENT_SECRET"]
-          access_token = os.environ["AKAMAI_ACCESS_TOKEN"]
-          host = os.environ["AKAMAI_HOST"]
-          network = os.environ["NETWORK"]
-          urls = [u.strip() for u in os.environ["URLS"].split(",")]
+          url_to_purge = "${{ github.event.inputs.url }}"
+          network = "${{ github.event.inputs.network }}"
 
-          endpoint = f"https://{host}/ccu/v3/invalidate/url/{network}"
+          base_url = f"https://{os.environ['AKAMAI_HOST']}"
+          endpoint = "/ccu/v3/invalidate/url"
 
           session = requests.Session()
           session.auth = EdgeGridAuth(
-              client_token=client_token,
-              client_secret=client_secret,
-              access_token=access_token
+              client_token=os.environ["AKAMAI_CLIENT_TOKEN"],
+              client_secret=os.environ["AKAMAI_CLIENT_SECRET"],
+              access_token=os.environ["AKAMAI_ACCESS_TOKEN"],
           )
 
-          payload = { "objects": urls }
+          payload = {
+              "objects": [url_to_purge],
+              "network": network
+          }
 
-          print("Endpoint:", endpoint)
-          print("Payload:", json.dumps(payload, indent=2))
+          resp = session.post(base_url + endpoint, json=payload)
 
-          response = session.post(endpoint, json=payload)
+          print("Status:", resp.status_code)
+          print(resp.text)
 
-          print("Status:", response.status_code)
-          print("Response:", response.text)
+          if resp.status_code not in (201, 202):
+              raise SystemExit("❌ Purge failed")
 
-          if response.status_code not in [201, 202]:
-              raise Exception("❌ Akamai purge failed")
-          else:
-              print("✅ Akamai purge accepted")
+          print("✅ Purge request accepted")
           EOF
