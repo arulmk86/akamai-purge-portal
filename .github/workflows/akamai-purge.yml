@@ -1,5 +1,4 @@
-
-name: Akamai Purge via Repository Dispatch
+name: Akamai Cache Purge
 
 on:
   repository_dispatch:
@@ -8,24 +7,55 @@ on:
 jobs:
   purge:
     runs-on: ubuntu-latest
+
     steps:
       - name: Show user input
         run: |
-          echo "URL to purge:"
-          echo "${{ github.event.client_payload.url }}"
+          echo "URL     : ${{ github.event.client_payload.url }}"
+          echo "Network : ${{ github.event.client_payload.network }}"
+
+      - name: Decide Akamai network
+        run: |
+          if [ "${{ github.event.client_payload.network }}" = "staging" ]; then
+            echo "CCU_ENV=staging" >> $GITHUB_ENV
+          else
+            echo "CCU_ENV=production" >> $GITHUB_ENV
+          fi
+
+      - name: Install Akamai EdgeGrid library
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install requests edgegrid-python
 
       - name: Purge Akamai Cache
         env:
+          AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
           AKAMAI_CLIENT_TOKEN: ${{ secrets.AKAMAI_CLIENT_TOKEN }}
           AKAMAI_CLIENT_SECRET: ${{ secrets.AKAMAI_CLIENT_SECRET }}
           AKAMAI_ACCESS_TOKEN: ${{ secrets.AKAMAI_ACCESS_TOKEN }}
-          AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
+          PURGE_URL: ${{ github.event.client_payload.url }}
         run: |
-          curl -X POST "https://${AKAMAI_HOST}/ccu/v3/invalidate/url" \
-          -H "Content-Type: application/json" \
-          -H "Authorization: Bearer ${AKAMAI_ACCESS_TOKEN}" \
-          -d '{
-            "objects": [
-              "${{ github.event.client_payload.url }}"
-            ]
-          }'
+          python3 << 'EOF'
+          import json
+          import requests
+          from akamai.edgegrid import EdgeGridAuth
+
+          session = requests.Session()
+          session.auth = EdgeGridAuth(
+              client_token="${AKAMAI_CLIENT_TOKEN}",
+              client_secret="${AKAMAI_CLIENT_SECRET}",
+              access_token="${AKAMAI_ACCESS_TOKEN}"
+          )
+
+          endpoint = f"https://${AKAMAI_HOST}/ccu/v3/invalidate/url/${CCU_ENV}"
+
+          payload = {
+              "objects": ["${PURGE_URL}"]
+          }
+
+          response = session.post(endpoint, json=payload)
+
+          print("Status Code:", response.status_code)
+          print("Response:")
+          print(json.dumps(response.json(), indent=2))
+          EOF
