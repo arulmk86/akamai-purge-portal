@@ -30,7 +30,7 @@ jobs:
       - name: Install Akamai EdgeGrid library
         run: |
           python3 -m pip install --upgrade pip
-          pip install requests akamai-edgegrid
+          pip install requests akamai-edgegrid==1.3.1
 
       - name: Purge Akamai Cache
         env:
@@ -47,7 +47,6 @@ jobs:
           import requests
           from akamai.edgegrid import EdgeGridAuth
 
-          # Read env variables
           client_token = os.environ["AKAMAI_CLIENT_TOKEN"]
           client_secret = os.environ["AKAMAI_CLIENT_SECRET"]
           access_token = os.environ["AKAMAI_ACCESS_TOKEN"]
@@ -55,7 +54,6 @@ jobs:
           network = os.environ["NETWORK"]
           urls = [u.strip() for u in os.environ["URLS"].split(",")]
 
-          # CCU endpoint
           endpoint = f"https://{host}/ccu/v3/invalidate/url/{network}"
 
           session = requests.Session()
@@ -65,20 +63,18 @@ jobs:
               access_token=access_token
           )
 
-          payload = {
-              "objects": urls
-          }
+          payload = { "objects": urls }
 
-          print("Purge endpoint:", endpoint)
+          print("Endpoint:", endpoint)
           print("Payload:", json.dumps(payload, indent=2))
 
           response = session.post(endpoint, json=payload)
 
-          print("Status Code:", response.status_code)
+          print("Status:", response.status_code)
           print("Response:", response.text)
 
           if response.status_code not in [201, 202]:
               raise Exception("❌ Akamai purge failed")
           else:
-              print("✅ Akamai purge request accepted")
+              print("✅ Akamai purge accepted")
           EOF
