@@ -37,7 +37,7 @@ jobs:
           AKAMAI_CLIENT_SECRET: ${{ secrets.AKAMAI_CLIENT_SECRET }}
           AKAMAI_ACCESS_TOKEN: ${{ secrets.AKAMAI_ACCESS_TOKEN }}
           AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
-        run: |
+      #  run: |
           python << 'EOF'
           import os
           import requests
