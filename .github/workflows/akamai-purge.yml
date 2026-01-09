@@ -1,70 +1,61 @@
-name: Akamai Cache Purge
+name: Akamai Cache Purge (No Python)
 
 on:
   workflow_dispatch:
     inputs:
-      url:
-        description: "URL to purge"
+      purge_type:
+        description: "Purge type"
         required: true
+        type: choice
+        options:
+          - url
+          - cpcode
+          - tag
+
+      purge_objects:
+        description: "Comma-separated URLs / CPCodes / Tags"
+        required: true
+
       network:
-        description: "staging or production"
+        description: "Akamai network"
         required: true
-        default: "staging"
+        default: production
+        type: choice
+        options:
+          - staging
+          - production
 
 jobs:
   purge:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-
-      - name: Install dependencies
+      - name: Install Akamai CLI (Go binary)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install requests
-          python -m pip install edgegrid-python   # <<--- THIS IS CRITICAL
+          curl -s https://akamai.github.io/cli/install.sh | bash
+          akamai install purge
 
-      - name: Purge Akamai Cache
+      - name: Configure Akamai credentials
         run: |
-          python purge_akamai.py
-        env:
-          AKAMAI_CLIENT_TOKEN: ${{ secrets.AKAMAI_CLIENT_TOKEN }}
-          AKAMAI_CLIENT_SECRET: ${{ secrets.AKAMAI_CLIENT_SECRET }}
-          AKAMAI_ACCESS_TOKEN: ${{ secrets.AKAMAI_ACCESS_TOKEN }}
-          AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
-        run: |
-          python << 'EOF'
-          import os
-          import requests
-          from edgegrid import EdgeGridAuth
-
-          url = "${{ github.event.inputs.url }}"
-          network = "${{ github.event.inputs.network }}"
-
-          session = requests.Session()
-          session.auth = EdgeGridAuth(
-              client_token=os.environ["AKAMAI_CLIENT_TOKEN"],
-              client_secret=os.environ["AKAMAI_CLIENT_SECRET"],
-              access_token=os.environ["AKAMAI_ACCESS_TOKEN"]
-          )
-
-          endpoint = f"https://{os.environ['AKAMAI_HOST']}/ccu/v3/invalidate/url"
-          payload = {
-              "objects": [url],
-              "network": network
-          }
-
-          r = session.post(endpoint, json=payload)
-          print("Status:", r.status_code)
-          print(r.text)
-
-          if r.status_code not in (201, 202):
-              raise SystemExit("❌ Purge failed")
-
-          print("✅ Purge request accepted")
+          mkdir -p ~/.akamai
+          cat <<EOF > ~/.akamai/credentials
+          [default]
+          client_token = ${{ secrets.AKAMAI_CLIENT_TOKEN }}
+          client_secret = ${{ secrets.AKAMAI_CLIENT_SECRET }}
+          access_token = ${{ secrets.AKAMAI_ACCESS_TOKEN }}
+          host = ${{ secrets.AKAMAI_HOST }}
           EOF
+
+      - name: Run Akamai Purge
+        run: |
+          OBJECTS=$(echo "${{ github.event.inputs.purge_objects }}" | tr ',' ' ')
+          TYPE="${{ github.event.inputs.purge_type }}"
+          NET="${{ github.event.inputs.network }}"
+
+          if [ "$TYPE" = "url" ]; then
+            akamai purge invalidate --network $NET --urls $OBJECTS
+          elif [ "$TYPE" = "cpcode" ]; then
+            akamai purge invalidate --network $NET --cpcode $OBJECTS
+          elif [ "$TYPE" = "tag" ]; then
+            akamai purge invalidate --network $NET --tags $OBJECTS
+          fi
